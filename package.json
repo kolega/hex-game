@@ -2,9 +2,9 @@
   "name": "hex-game",
   "version": "1.0.0",
   "description": "JS and HTML hex arcade",
-  "main": "hex.html",
+  "main": "./src/index.html",
   "scripts": {
-    "start": "npx http-server -p 4000 ./"
+    "start": "npx http-server -p 4000 ./src"
   },
   "author": "oleg@codebe.com",
   "license": "MIT",
