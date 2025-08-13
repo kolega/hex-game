@@ -1,12 +1,12 @@
 {
-  "name": "my-games",
+  "name": "hex-game",
   "version": "1.0.0",
-  "description": "My games",
-  "main": "index.js",
+  "description": "JS and HTML hex arcade",
+  "main": "hex.html",
   "scripts": {
-    "hex-v1": "npx http-server -p 4000 ./hex/"
+    "start": "npx http-server -p 4000 ./"
   },
-  "author": "me",
-  "license": "ISC",
+  "author": "oleg@codebe.com",
+  "license": "MIT",
   "packageManager": "yarn@1.22.22+sha1.ac34549e6aa8e7ead463a7407e1c7390f61a6610"
 }

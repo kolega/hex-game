@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="eb">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hex Game</title>
+  <style>
+    :root {
+      color-scheme: dark light;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #0f1115;
+      color: #e6e6e6;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+
+    .topbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 12px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0));
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      z-index: 1000;
+      user-select: none;
+    }
+
+    .title {
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      color: #f0f3ff;
+    }
+
+    .spacer {
+      flex: 1;
+    }
+
+    .btn {
+      background: #2a3140;
+      color: #e6ecff;
+      border: 1px solid #3a4256;
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .btn:hover {
+      background: #323a4c;
+    }
+
+    .btn.inactive {
+      opacity: 0.5;
+      filter: grayscale(0.4);
+      cursor: not-allowed;
+    }
+
+    .btn.active {
+      outline: 2px solid #8fb5ff;
+    }
+
+    .score {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 14px;
+      opacity: 0.95;
+    }
+
+    .badge {
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid #2f3650;
+      background: #141925;
+    }
+
+    .p {
+      color: #8fb5ff;
+    }
+
+    .e {
+      color: #ff9f9f;
+    }
+
+    .muted {
+      opacity: 0.7;
+      font-weight: 500;
+    }
+
+    #game {
+      position: absolute;
+      inset: 0;
+      top: 56px;
+    }
+
+    canvas {
+      width: 100%;
+      height: calc(100% - 56px);
+      display: block;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 56px 0 0 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 3;
+    }
+
+    .overlay.visible {
+      display: flex;
+    }
+
+    .card {
+      background: #141925;
+      border: 1px solid #2f3650;
+      padding: 24px 28px;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+      text-align: center;
+    }
+
+    .card h2 {
+      margin: 0 0 8px 0;
+    }
+
+    .subtitle {
+      opacity: 0.8;
+      margin-bottom: 16px;
+    }
+
+    .rules {
+      position: fixed;
+      bottom: 12px;
+      left: 12px;
+      background: rgba(20, 25, 37, 0.7);
+      border: 1px solid #2a3148;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.35;
+      user-select: none;
+      pointer-events: none;
+      max-width: 48ch;
+    }
+
+    .rules b {
+      color: #d7e0ff;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="topbar">
+    <div class="title">Hex Game — side 5</div>
+    <div class="score" id="score">
+      <span class="badge p">Player: <span id="scoreP">0</span></span>
+      <span class="badge e">Enemy: <span id="scoreE">0</span></span>
+      <span class="badge muted">Total dots: <span id="scoreTotal">0</span></span>
+      <span class="badge muted">Remaining: <span id="scoreLeft">0</span></span>
+    </div>
+    <div class="score" id="buffs">
+      <button id="buffExplode" type="button" class="btn" title="Bomb: reset 1 cell (any)">Bomb ×<span
+          id="buffExplodeP">0</span></button>
+      <button id="buffBig" type="button" class="btn" title="Big bomb: reset target and -1 to neighbors">Big bomb ×<span
+          id="buffBigP">0</span></button>
+      <span class="badge muted" title="Enemy availability">Enemy: bomb ×<span id="buffExplodeE">0</span>, big ×<span
+          id="buffBigE">0</span></span>
+    </div>
+    <div class="spacer"></div>
+    <button id="resetBtn" class="btn" title="Очистить поле и начать заново">Сброс</button>
+  </div>
+
+  <div id="game">
+    <canvas id="canvas"></canvas>
+    <div id="overlay" class="overlay">
+      <div class="card">
+        <h2>Victory! 🎉</h2>
+        <div class="subtitle">All hexes have 3 dots</div>
+        <button id="againBtn" class="btn">Play again</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="rules">
+    <div><b>Rules</b></div>
+    <div>1) Board is a hex made of small hexes, side length 5</div>
+    <div>2) Turns: player (blue), then enemy (red)</div>
+    <div>3) Click adds 1 dot (up to 3). On 4th click hex splits to 3 random neighbors; itself becomes 1</div>
+    <div>4) Cascade: neighbors with 3 also split (parent excluded), up to 3 cycles per turn</div>
+    <div>5) Capturing enemy hexes only via split</div>
+    <div>6) Buffs: Bomb — reset 1 cell; Big bomb — reset target and -1 to neighbors</div>
+  </div>
+
+  <script>
+    (function () {
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const overlay = document.getElementById('overlay');
+      const resetBtn = document.getElementById('resetBtn');
+      const againBtn = document.getElementById('againBtn');
+      const scoreP = document.getElementById('scoreP');
+      const scoreE = document.getElementById('scoreE');
+      const scoreTotal = document.getElementById('scoreTotal');
+      const scoreLeft = document.getElementById('scoreLeft');
+      const buffExplodeBtn = document.getElementById('buffExplode');
+      const buffBigBtn = document.getElementById('buffBig');
+      const buffExplodeP = document.getElementById('buffExplodeP');
+      const buffBigP = document.getElementById('buffBigP');
+      const buffExplodeE = document.getElementById('buffExplodeE');
+      const buffBigE = document.getElementById('buffBigE');
+
+      const SIDE = 5;
+      const RADIUS = SIDE - 1;
+      let deviceScale = Math.max(1, window.devicePixelRatio || 1);
+      let hexR = 24;
+      const padding = 24;
+
+      const cells = [];
+      for (let q = -RADIUS; q <= RADIUS; q++) {
+        const r1 = Math.max(-RADIUS, -q - RADIUS);
+        const r2 = Math.min(RADIUS, -q + RADIUS);
+        for (let r = r1; r <= r2; r++) cells.push({ q, r });
+      }
+      const keyOf = (q, r) => `${q},${r}`;
+      const neighborsDirs = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+      const neighbors = (q, r) => neighborsDirs.map(([dq, dr]) => [q + dq, r + dr]).filter(([qq, rr]) => counts.has(keyOf(qq, rr)));
+
+      const counts = new Map();
+      const owners = new Map(); // 'P' | 'E' | null
+      const paths = new Map();
+      let hoveredKey = null;
+      let currentPlayer = 'P';
+      let inputLocked = false;
+      for (const { q, r } of cells) { counts.set(keyOf(q, r), 0); owners.set(keyOf(q, r), null); }
+
+      // Buffs state
+      const buffs = { P: { explode: 0, big: 0 }, E: { explode: 0, big: 0 } };
+      // Explosion animations: key -> {start, dur}
+      const cellAnims = new Map();
+      let animating = false;
+
+      function addAnimForKeys(keys, dur = 450, rgb = [255, 80, 80]) {
+        const t = performance.now();
+        const uniq = Array.from(new Set(keys));
+        for (const k of uniq) cellAnims.set(k, { start: t, dur, rgb });
+        scheduleAnimTick();
+      }
+
+      function scheduleAnimTick() {
+        if (animating) return;
+        animating = true;
+        const tick = () => {
+          draw();
+          // continue while there are active animations
+          const now = performance.now();
+          let hasActive = false;
+          for (const [k, a] of cellAnims.entries()) {
+            const t = (now - a.start) / a.dur;
+            if (t >= 1) cellAnims.delete(k);
+            else hasActive = true;
+          }
+          if (hasActive) requestAnimationFrame(tick);
+          else animating = false;
+        };
+        requestAnimationFrame(tick);
+      }
+
+      function updateBuffUI() {
+        canvas.style.cursor = 'default';
+        buffExplodeBtn.classList.remove('active');
+        buffBigBtn.classList.remove('active');
+      }
+
+      function resizeCanvasToDisplaySize() {
+        const parent = canvas.parentElement;
+        const cssWidth = parent.clientWidth;
+        const cssHeight = parent.clientHeight;
+        deviceScale = Math.max(1, window.devicePixelRatio || 1);
+        canvas.width = Math.floor(cssWidth * deviceScale);
+        canvas.height = Math.floor(cssHeight * deviceScale);
+        canvas.style.width = cssWidth + 'px';
+        canvas.style.height = cssHeight + 'px';
+      }
+
+      function computeLayoutAndSize() {
+        const xC = cells.map(({ q }) => 1.5 * q);
+        const yC = cells.map(({ q, r }) => Math.sqrt(3) * (r + 0.5 * q));
+        const minXC = Math.min(...xC), maxXC = Math.max(...xC);
+        const minYC = Math.min(...yC), maxYC = Math.max(...yC);
+        const rangeXC = maxXC - minXC, rangeYC = maxYC - minYC;
+        const availW = Math.max(1, canvas.width - 2 * padding * deviceScale);
+        const availH = Math.max(1, canvas.height - 2 * padding * deviceScale);
+        const rByW = availW / (rangeXC + 2);
+        const rByH = availH / (rangeYC + Math.sqrt(3));
+        hexR = Math.floor(Math.max(8, Math.min(rByW, rByH)));
+        const totalW = hexR * (rangeXC + 2);
+        const totalH = hexR * (rangeYC + Math.sqrt(3));
+        const edgeLeft = padding * deviceScale + (availW - totalW) / 2;
+        const edgeTop = padding * deviceScale + (availH - totalH) / 2;
+        return function centerOf(q, r) {
+          const cx = edgeLeft + hexR + (1.5 * q - minXC) * hexR;
+          const cy = edgeTop + (Math.sqrt(3) / 2) * hexR + (Math.sqrt(3) * (r + 0.5 * q) - minYC) * hexR;
+          return { x: cx, y: cy };
+        };
+      }
+
+      function buildHexPath(cx, cy, radius) {
+        const a = radius, b = (Math.sqrt(3) / 2) * radius;
+        const p = new Path2D();
+        p.moveTo(cx - a, cy);
+        p.lineTo(cx - a / 2, cy - b);
+        p.lineTo(cx + a / 2, cy - b);
+        p.lineTo(cx + a, cy);
+        p.lineTo(cx + a / 2, cy + b);
+        p.lineTo(cx - a / 2, cy + b);
+        p.closePath();
+        return p;
+      }
+
+      function dot(x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.closePath(); ctx.fill(); }
+      function drawDots(cx, cy, radius, count, color) {
+        if (count <= 0) return;
+        const r = Math.max(2, Math.floor(radius * 0.22));
+        ctx.fillStyle = color;
+        if (count === 1) {
+          dot(cx, cy, r);
+        } else if (count === 2) {
+          const dx = radius * 0.6; dot(cx - dx / 2, cy, r); dot(cx + dx / 2, cy, r);
+        } else if (count === 3) {
+          const dx = radius * 0.6; const dy = (Math.sqrt(3) / 2) * radius * 0.5;
+          dot(cx, cy - dy, r); dot(cx - dx / 2, cy + dy * 0.7, r); dot(cx + dx / 2, cy + dy * 0.7, r);
+        }
+      }
+
+      function computeScores() {
+        let p = 0, e = 0, total = 0; for (const { q, r } of cells) { const k = keyOf(q, r); const c = counts.get(k) || 0; total += c; const o = owners.get(k); if (o === 'P') p += c; else if (o === 'E') e += c; }
+        const maxTotal = cells.length * 3; return { p, e, total, left: Math.max(0, maxTotal - total) };
+      }
+      function updateScoreUI() { const { p, e, total, left } = computeScores(); scoreP.textContent = String(p); scoreE.textContent = String(e); scoreTotal.textContent = String(total); scoreLeft.textContent = String(left); buffExplodeP.textContent = String(buffs.P.explode); buffBigP.textContent = String(buffs.P.big); buffExplodeE.textContent = String(buffs.E.explode); buffBigE.textContent = String(buffs.E.big); const canExplode = !(buffs.P.explode <= 0 || inputLocked || currentPlayer !== 'P'); const canBig = !(buffs.P.big <= 0 || inputLocked || currentPlayer !== 'P'); buffExplodeBtn.classList.toggle('inactive', !canExplode); buffBigBtn.classList.toggle('inactive', !canBig); }
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const centerOf = computeLayoutAndSize();
+        paths.clear();
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+
+        for (const { q, r } of cells) {
+          const { x, y } = centerOf(q, r);
+          const path = buildHexPath(x, y, hexR);
+          const k = keyOf(q, r); paths.set(k, path);
+          const count = counts.get(k) || 0; const owner = owners.get(k);
+          const stroke = '#3a4769';
+          ctx.fillStyle = 'rgba(36,43,66,0.18)';
+          ctx.strokeStyle = stroke;
+          ctx.lineWidth = Math.max(1, Math.floor(hexR * 0.09));
+          ctx.fill(path); ctx.stroke(path);
+          ctx.save();
+          const dotColor = owner === 'P' ? '#8fb5ff' : owner === 'E' ? '#ff9f9f' : '#dfe6ff';
+          drawDots(x, y, hexR, count, dotColor);
+          ctx.restore();
+
+          // buff/capture/selection animation: fade towards neutral
+          const anim = cellAnims.get(k);
+          if (anim) {
+            const t = Math.min(1, Math.max(0, (performance.now() - anim.start) / anim.dur));
+            const alpha = 0.35 * (1 - t);
+            const [rCol, gCol, bCol] = anim.rgb || [255, 80, 80];
+            ctx.save();
+            ctx.fillStyle = `rgba(${rCol}, ${gCol}, ${bCol}, ${alpha})`;
+            ctx.fill(path);
+            ctx.restore();
+          }
+        }
+
+        if (hoveredKey) {
+          const path = paths.get(hoveredKey);
+          if (path) { ctx.save(); ctx.strokeStyle = '#b6c4ff'; ctx.lineWidth = Math.max(1, Math.floor(hexR * 0.12)); ctx.stroke(path); ctx.restore(); }
+        }
+        updateScoreUI();
+      }
+
+      function allFilledToThree() { for (const k of counts.keys()) { if ((counts.get(k) || 0) !== 3) return false; } return true; }
+      function showEndOverlay(titleText, subtitleText) {
+        const h = overlay.querySelector('h2');
+        const sub = overlay.querySelector('.subtitle');
+        if (h) h.textContent = titleText;
+        if (sub) sub.textContent = subtitleText || '';
+        overlay.classList.add('visible');
+      }
+      function hideWinOverlay() { overlay.classList.remove('visible'); }
+
+      function reset() { for (const k of counts.keys()) counts.set(k, 0); for (const k of owners.keys()) owners.set(k, null); currentPlayer = 'P'; inputLocked = false; buffs.P.explode = buffs.P.big = buffs.E.explode = buffs.E.big = 0; hideWinOverlay(); draw(); updateScoreUI(); }
+
+      function addPoint(q, r, depthLeft, parentKey, fromSplit, captures, splits) {
+        const k = keyOf(q, r);
+        const prevOwner = owners.get(k);
+        const cur = counts.get(k) || 0;
+        if (cur < 3) {
+          counts.set(k, cur + 1);
+          if (fromSplit) { owners.set(k, currentPlayer); if (prevOwner && prevOwner !== currentPlayer) captures.push({ k, prevOwner, prevCount: cur }); }
+          else if (owners.get(k) == null) owners.set(k, currentPlayer);
+          return;
+        }
+        if (depthLeft <= 0) return;
+        counts.set(k, 1);
+        owners.set(k, currentPlayer);
+        if (prevOwner && prevOwner !== currentPlayer) captures.push({ k, prevOwner, prevCount: cur });
+        if (splits) splits.count = (splits.count || 0) + 1;
+        const neighs = neighbors(q, r).filter(([nq, nr]) => keyOf(nq, nr) !== parentKey);
+        for (let i = neighs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[neighs[i], neighs[j]] = [neighs[j], neighs[i]]; }
+        const targets = neighs.slice(0, Math.min(3, neighs.length));
+        for (const [nq, nr] of targets) addPoint(nq, nr, depthLeft - 1, k, true, captures, splits);
+      }
+
+      function awardBuffsFromCaptures(captures) {
+        // count enemy hexes actually captured this turn
+        const capturedEnemy = captures.filter(c => c.prevOwner && c.prevOwner !== currentPlayer);
+        const num = capturedEnemy.length;
+        if (num >= 3) buffs[currentPlayer].big += 1;
+        else if (num >= 2) buffs[currentPlayer].explode += 1;
+      }
+
+      function applyBuffAt(buffType, q, r) {
+        const k = keyOf(q, r);
+        if (buffType === 'explode') {
+          counts.set(k, 0); owners.set(k, null);
+        } else if (buffType === 'big') {
+          counts.set(k, 0); owners.set(k, null);
+          for (const [nq, nr] of neighbors(q, r)) {
+            const nk = keyOf(nq, nr); const c = counts.get(nk) || 0; if (c > 0) counts.set(nk, c - 1);
+            if ((counts.get(nk) || 0) === 0) owners.set(nk, null);
+          }
+        }
+      }
+
+      function enemyMove() {
+        // probabilistic chain of applying buffs
+        currentPlayer = 'E';
+        let loops = 0;
+        while ((buffs.E.big > 0 || buffs.E.explode > 0) && loops < 5) {
+          loops++;
+          if (Math.random() >= 0.6) break; // ~60% chance to apply the next buff
+          let useBig = false;
+          if (buffs.E.big > 0 && buffs.E.explode > 0) useBig = Math.random() < 0.5;
+          else if (buffs.E.big > 0) useBig = true;
+          else useBig = false;
+          if (useBig) {
+            const targets = []; for (const { q, r } of cells) { const k = keyOf(q, r); if (owners.get(k) === 'P') targets.push({ q, r, k }); }
+            if (!targets.length) break;
+            const pick = targets[Math.floor(Math.random() * targets.length)];
+            const affected = [pick.k, ...neighbors(pick.q, pick.r).map(([nq, nr]) => keyOf(nq, nr))];
+            applyBuffAt('big', pick.q, pick.r); addAnimForKeys(affected); buffs.E.big--;
+          } else {
+            const targets = []; for (const { q, r } of cells) { const k = keyOf(q, r); if (owners.get(k) === 'P' && (counts.get(k) || 0) > 0) targets.push({ q, r, k }); }
+            if (!targets.length) break;
+            const pick = targets[Math.floor(Math.random() * targets.length)];
+            applyBuffAt('explode', pick.q, pick.r); addAnimForKeys([pick.k]); buffs.E.explode--;
+          }
+        }
+        // regular move
+        currentPlayer = 'E';
+        const prioOwnFull = []; const grow = [];
+        for (const { q, r } of cells) {
+          const k = keyOf(q, r); const c = counts.get(k) || 0; const o = owners.get(k);
+          if (o === 'E' && c === 3) prioOwnFull.push({ q, r });
+          else if ((o === 'E' || o == null) && c < 3) grow.push({ q, r });
+        }
+        const pool = prioOwnFull.length ? prioOwnFull : grow;
+        if (!pool.length) return;
+        const { q, r } = pool[Math.floor(Math.random() * pool.length)];
+        const captures = []; const splits = { count: 0 };
+        // animation of enemy-selected hex (red flash)
+        const selKey = keyOf(q, r);
+        addAnimForKeys([selKey], 450, [255, 80, 80]);
+        addPoint(q, r, 3, null, false, captures, splits);
+        // animation for cells captured by the enemy
+        const enemyCaptured = captures.map(c => c.k);
+        if (enemyCaptured.length) addAnimForKeys(enemyCaptured, 450, [255, 80, 80]);
+        awardBuffsFromCaptures(captures);
+        if (checkTerritoryEnd()) return;
+        // even if the enemy had a split, do not grant extra move — turn is finished
+      }
+
+      function handleClick(evt) {
+        if (inputLocked) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = (evt.clientX - rect.left) * deviceScale;
+        const y = (evt.clientY - rect.top) * deviceScale;
+        let hitKey = null; for (const [k, path] of paths.entries()) { if (path && ctx.isPointInPath(path, x, y)) { hitKey = k; break; } }
+        if (!hitKey) return;
+        const [qStr, rStr] = hitKey.split(','); const q = parseInt(qStr, 10); const r = parseInt(rStr, 10);
+
+        const cellOwner = owners.get(hitKey);
+        if (cellOwner && cellOwner !== 'P') return;
+
+        currentPlayer = 'P';
+        const captures = []; const splits = { count: 0 };
+        // animation of selected hex (blue flash)
+        addAnimForKeys([hitKey], 450, [143, 181, 255]);
+        addPoint(q, r, 3, null, false, captures, splits);
+        // animation of captured neighbors: tint with current player's color
+        const capturedKeys = captures.map(c => c.k);
+        if (capturedKeys.length) addAnimForKeys(capturedKeys, 450, currentPlayer === 'P' ? [143, 181, 255] : [255, 80, 80]);
+        awardBuffsFromCaptures(captures);
+        draw(); updateScoreUI(); if (allFilledToThree()) { showEndOverlay('Победа! 🎉', 'Все гексы заполнены по 3'); return; } if (checkTerritoryEnd()) return;
+
+        // if there was a split, the player keeps the turn; otherwise pass to enemy
+        if (splits.count > 0) return;
+        inputLocked = true;
+        setTimeout(() => { currentPlayer = 'E'; enemyMove(); draw(); currentPlayer = 'P'; updateScoreUI(); inputLocked = false; if (allFilledToThree()) showWinOverlay(); }, 200);
+      }
+
+      function handleMove(evt) {
+        const rect = canvas.getBoundingClientRect();
+        const x = (evt.clientX - rect.left) * deviceScale;
+        const y = (evt.clientY - rect.top) * deviceScale;
+        let newHover = null; for (const [k, path] of paths.entries()) { if (path && ctx.isPointInPath(path, x, y)) { newHover = k; break; } }
+        if (newHover !== hoveredKey) { hoveredKey = newHover; draw(); }
+      }
+      function handleLeave() { if (hoveredKey !== null) { hoveredKey = null; draw(); } }
+
+      function init() { resizeCanvasToDisplaySize(); draw(); updateScoreUI(); updateBuffUI(); }
+      window.addEventListener('resize', () => { resizeCanvasToDisplaySize(); draw(); });
+      canvas.addEventListener('click', handleClick);
+      canvas.addEventListener('mousemove', handleMove);
+      canvas.addEventListener('mouseleave', handleLeave);
+      resetBtn.addEventListener('click', reset);
+      againBtn.addEventListener('click', reset);
+
+      buffExplodeBtn.addEventListener('click', () => {
+        console.log('buffExplodeBtn.addEventListener', currentPlayer, buffs.P.explode, inputLocked);
+        if (currentPlayer !== 'P' || buffs.P.explode <= 0) return;
+        const enemies = [];
+        for (const { q, r } of cells) {
+          const k = keyOf(q, r); if (owners.get(k) === 'E' && (counts.get(k) || 0) > 0) enemies.push({ q, r, k });
+        }
+        if (enemies.length === 0) return;
+        const pick = enemies[Math.floor(Math.random() * enemies.length)];
+        applyBuffAt('explode', pick.q, pick.r);
+        addAnimForKeys([pick.k]);
+        buffs.P.explode--; draw(); updateScoreUI(); if (checkTerritoryEnd()) return;
+        // player keeps the turn, can apply another buff or make a regular move
+      });
+
+      buffBigBtn.addEventListener('click', () => {
+        if (currentPlayer !== 'P' || buffs.P.big <= 0) return;
+        const enemies = [];
+        for (const { q, r } of cells) { const k = keyOf(q, r); if (owners.get(k) === 'E') enemies.push({ q, r, k }); }
+        if (enemies.length === 0) return;
+        const pick = enemies[Math.floor(Math.random() * enemies.length)];
+        const affected = [pick.k, ...neighbors(pick.q, pick.r).map(([nq, nr]) => keyOf(nq, nr))];
+        applyBuffAt('big', pick.q, pick.r);
+        addAnimForKeys(affected);
+        buffs.P.big--; draw(); updateScoreUI(); if (checkTerritoryEnd()) return;
+        // player keeps the turn
+      });
+
+      // Fallback delegated handlers in case direct listeners are not attached for any reason
+      // (removed — direct button handlers are sufficient)
+
+      function checkTerritoryEnd() {
+        let pOwn = 0, eOwn = 0, totalCells = 0;
+        for (const { q, r } of cells) {
+          totalCells++;
+          const k = keyOf(q, r);
+          const c = counts.get(k) || 0;
+          const o = owners.get(k);
+          if (c > 0) {
+            if (o === 'P') pOwn++;
+            else if (o === 'E') eOwn++;
+          }
+        }
+        if (pOwn === totalCells) { showEndOverlay('Victory! 🎉', 'All hexes are occupied by your dots'); return true; }
+        if (eOwn === totalCells) { showEndOverlay('Defeat 😞', 'All hexes are occupied by enemy dots'); return true; }
+        return false;
+      }
+
+      init();
+    })();
+  </script>
+</body>
+
+</html>
