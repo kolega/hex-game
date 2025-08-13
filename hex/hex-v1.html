@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hex Точки — ребро 5</title>
+  <style>
+    :root {
+      color-scheme: dark light;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #0f1115;
+      color: #e6e6e6;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+
+    .topbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0));
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      z-index: 2;
+      user-select: none;
+    }
+
+    .title {
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      color: #f0f3ff;
+    }
+
+    .spacer {
+      flex: 1;
+    }
+
+    .btn {
+      background: #2a3140;
+      color: #e6ecff;
+      border: 1px solid #3a4256;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .btn:hover {
+      background: #323a4c;
+    }
+
+    .score {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 600;
+      font-size: 14px;
+      opacity: 0.95;
+    }
+
+    .badge {
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid #2f3650;
+      background: #141925;
+    }
+
+    .p {
+      color: #8fb5ff;
+    }
+
+    .e {
+      color: #ff9f9f;
+    }
+
+    .muted {
+      opacity: 0.7;
+      font-weight: 500;
+    }
+
+    #game {
+      position: absolute;
+      inset: 0;
+      top: 48px;
+    }
+
+    canvas {
+      width: 100%;
+      height: calc(100% - 48px);
+      display: block;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 48px 0 0 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 3;
+    }
+
+    .overlay.visible {
+      display: flex;
+    }
+
+    .card {
+      background: #141925;
+      border: 1px solid #2f3650;
+      padding: 24px 28px;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+      text-align: center;
+    }
+
+    .card h2 {
+      margin: 0 0 8px 0;
+    }
+
+    .subtitle {
+      opacity: 0.8;
+      margin-bottom: 16px;
+    }
+
+    .rules {
+      position: fixed;
+      bottom: 12px;
+      left: 12px;
+      background: rgba(20, 25, 37, 0.7);
+      border: 1px solid #2a3148;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.35;
+      user-select: none;
+      pointer-events: none;
+      max-width: 44ch;
+    }
+
+    .rules b {
+      color: #d7e0ff;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="topbar">
+    <div class="title">Hex Точки — ребро 5</div>
+    <div class="score" id="score">
+      <span class="badge p">Игрок: <span id="scoreP">0</span></span>
+      <span class="badge e">Враг: <span id="scoreE">0</span></span>
+      <span class="badge muted">Всего точек: <span id="scoreTotal">0</span></span>
+      <span class="badge muted">Осталось: <span id="scoreLeft">0</span></span>
+    </div>
+    <div class="spacer"></div>
+    <button id="resetBtn" class="btn" title="Очистить поле и начать заново">Сброс</button>
+  </div>
+
+  <div id="game">
+    <canvas id="canvas"></canvas>
+    <div id="overlay" class="overlay">
+      <div class="card">
+        <h2>Победа! 🎉</h2>
+        <div class="subtitle">Все гексы заполнены по 3 точки</div>
+        <button id="againBtn" class="btn">Сыграть снова</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="rules">
+    <div><b>Правила</b></div>
+    <div>1) Поле — гекс из маленьких гексов, длина ребра 5</div>
+    <div>2) Ходы по очереди: игрок (синий), затем противник (красный)</div>
+    <div>3) Клик/ход добавляет 1 точку (до 3)</div>
+    <div>4) На 4-й точке гекс распадается на 3 случайных соседних, сам становится 1 и окрашивается в цвет текущего
+      игрока</div>
+    <div>5) Каскад: если сосед имел 3, он тоже распадается (родитель исключается), максимум 3 цикла за ход</div>
+    <div>6) Победа — когда все гексы имеют по 3 точки</div>
+  </div>
+
+  <script>
+    (function () {
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const overlay = document.getElementById('overlay');
+      const resetBtn = document.getElementById('resetBtn');
+      const againBtn = document.getElementById('againBtn');
+
+      // Гекс-форма: длина ребра
+      const SIDE = 5;            // число ячеек по ребру
+      const RADIUS = SIDE - 1;   // радиус в аксиальных координатах
+
+      let deviceScale = Math.max(1, window.devicePixelRatio || 1);
+      let hexR = 24;             // пиксельный радиус (центр -> вершина)
+      const padding = 24;
+
+      // Аксиальные координаты (q, r) для гекса радиуса RADIUS
+      const cells = [];
+      for (let q = -RADIUS; q <= RADIUS; q++) {
+        const r1 = Math.max(-RADIUS, -q - RADIUS);
+        const r2 = Math.min(RADIUS, -q + RADIUS);
+        for (let r = r1; r <= r2; r++) {
+          cells.push({ q, r });
+        }
+      }
+
+      const keyOf = (q, r) => `${q},${r}`;
+
+      // Состояние: количество точек и владелец каждой ячейки
+      const counts = new Map();
+      const owners = new Map(); // 'P' | 'E' | null
+      const paths = new Map();
+      let hoveredKey = null;
+      let currentPlayer = 'P'; // 'P' — игрок (синий), 'E' — противник (красный)
+      let inputLocked = false;
+      for (const { q, r } of cells) {
+        const k = keyOf(q, r);
+        counts.set(k, 0);
+        owners.set(k, null);
+      }
+
+      const scoreP = document.getElementById('scoreP');
+      const scoreE = document.getElementById('scoreE');
+      const scoreTotal = document.getElementById('scoreTotal');
+      const scoreLeft = document.getElementById('scoreLeft');
+
+      function computeScores() {
+        let p = 0, e = 0, total = 0;
+        for (const { q, r } of cells) {
+          const k = keyOf(q, r);
+          const c = counts.get(k) || 0;
+          total += c;
+          const o = owners.get(k);
+          if (o === 'P') p += c;
+          else if (o === 'E') e += c;
+        }
+        const maxTotal = cells.length * 3;
+        return { p, e, total, left: Math.max(0, maxTotal - total) };
+      }
+
+      function updateScoreUI() {
+        const { p, e, total, left } = computeScores();
+        if (scoreP) scoreP.textContent = String(p);
+        if (scoreE) scoreE.textContent = String(e);
+        if (scoreTotal) scoreTotal.textContent = String(total);
+        if (scoreLeft) scoreLeft.textContent = String(left);
+      }
+
+      function resizeCanvasToDisplaySize() {
+        const parent = canvas.parentElement;
+        const cssWidth = parent.clientWidth;
+        const cssHeight = parent.clientHeight;
+        deviceScale = Math.max(1, window.devicePixelRatio || 1);
+        canvas.width = Math.floor(cssWidth * deviceScale);
+        canvas.height = Math.floor(cssHeight * deviceScale);
+        canvas.style.width = cssWidth + 'px';
+        canvas.style.height = cssHeight + 'px';
+      }
+
+      // Центры гексов в пикселях для flat-top: x = 1.5*hexR*q, y = sqrt(3)*hexR*(r + q/2)
+      function axialToPixel(q, r, hexR, originX, originY) {
+        const x = originX + (1.5 * hexR) * q;
+        const y = originY + (Math.sqrt(3) * hexR) * (r + 0.5 * q);
+        return { x, y };
+      }
+
+      function buildHexPath(cx, cy, radius) {
+        const a = radius; // по оси X до вершины
+        const b = (Math.sqrt(3) / 2) * radius; // по оси Y до угла
+        const path = new Path2D();
+        path.moveTo(cx - a, cy);
+        path.lineTo(cx - a / 2, cy - b);
+        path.lineTo(cx + a / 2, cy - b);
+        path.lineTo(cx + a, cy);
+        path.lineTo(cx + a / 2, cy + b);
+        path.lineTo(cx - a / 2, cy + b);
+        path.closePath();
+        return path;
+      }
+
+      const DIRS = [
+        [1, 0], [1, -1], [0, -1],
+        [-1, 0], [-1, 1], [0, 1],
+      ];
+      function neighbors(q, r) {
+        const res = [];
+        for (const [dq, dr] of DIRS) {
+          const nq = q + dq, nr = r + dr;
+          if (counts.has(keyOf(nq, nr))) res.push([nq, nr]);
+        }
+        return res;
+      }
+      function shuffleInPlace(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+      }
+
+      function computeLayoutAndSize() {
+        // Коэффициенты центров при hexR=1
+        const xCoeffs = cells.map(({ q }) => 1.5 * q);
+        const yCoeffs = cells.map(({ q, r }) => Math.sqrt(3) * (r + 0.5 * q));
+        const minXC = Math.min(...xCoeffs);
+        const maxXC = Math.max(...xCoeffs);
+        const minYC = Math.min(...yCoeffs);
+        const maxYC = Math.max(...yCoeffs);
+
+        const rangeXC = maxXC - minXC;              // ширина центров в единицах hexR
+        const rangeYC = maxYC - minYC;              // высота центров в единицах hexR
+
+        const availW = Math.max(1, canvas.width - 2 * padding * deviceScale);
+        const availH = Math.max(1, canvas.height - 2 * padding * deviceScale);
+
+        // Полная ширина = hexR * (rangeXC + 2)  (запас по ±hexR)
+        // Полная высота = hexR * (rangeYC + sqrt(3)) (запас по ±sqrt(3)/2 сверху и снизу)
+        const hexRbyW = availW / (rangeXC + 2);
+        const hexRbyH = availH / (rangeYC + Math.sqrt(3));
+        hexR = Math.floor(Math.max(8, Math.min(hexRbyW, hexRbyH)));
+
+        const totalW = hexR * (rangeXC + 2);
+        const totalH = hexR * (rangeYC + Math.sqrt(3));
+
+        const edgeLeft = padding * deviceScale + (availW - totalW) / 2;
+        const edgeTop = padding * deviceScale + (availH - totalH) / 2;
+
+        // Возвращаем функцию для вычисления центра любой ячейки
+        return function centerOf(q, r) {
+          const cx = edgeLeft + hexR + (1.5 * q - minXC) * hexR;
+          const cy = edgeTop + (Math.sqrt(3) / 2) * hexR + (Math.sqrt(3) * (r + 0.5 * q) - minYC) * hexR;
+          return { x: cx, y: cy };
+        };
+      }
+
+      function drawDots(cx, cy, radius, count, color) {
+        if (count <= 0) return;
+        const r = Math.max(2, Math.floor(radius * 0.22));
+        ctx.fillStyle = color;
+        if (count === 1) {
+          dot(cx, cy, r);
+        } else if (count === 2) {
+          const dx = radius * 0.6;
+          dot(cx - dx / 2, cy, r);
+          dot(cx + dx / 2, cy, r);
+        } else if (count === 3) {
+          const dx = radius * 0.6;
+          const dy = (Math.sqrt(3) / 2) * radius * 0.5;
+          dot(cx, cy - dy, r);
+          dot(cx - dx / 2, cy + dy * 0.7, r);
+          dot(cx + dx / 2, cy + dy * 0.7, r);
+        }
+      }
+      function dot(x, y, r) {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const centerOf = computeLayoutAndSize();
+        paths.clear();
+
+        for (const { q, r } of cells) {
+          const { x, y } = centerOf(q, r);
+          const path = buildHexPath(x, y, hexR);
+          const k = keyOf(q, r);
+          paths.set(k, path);
+
+          const count = counts.get(k) || 0;
+          const owner = owners.get(k);
+
+          // Палитры: P — синий, E — красный, null — серо-синий
+          const isHovered = hoveredKey === k;
+          const stroke = isHovered ? '#b6c4ff' : '#3a4769';
+
+          // Фон гекса — нейтральный, не окрашиваем в цвет владельца
+          ctx.fillStyle = 'rgba(36, 43, 66, 0.18)';
+          ctx.strokeStyle = stroke;
+          ctx.lineWidth = Math.max(1, Math.floor(hexR * 0.09));
+          ctx.fill(path);
+          ctx.stroke(path);
+
+          // Точки цветом владельца
+          ctx.save();
+          const dotColor = owner === 'P' ? '#8fb5ff' : owner === 'E' ? '#ff9f9f' : '#dfe6ff';
+          drawDots(x, y, hexR, count, dotColor);
+          ctx.restore();
+        }
+        updateScoreUI();
+      }
+
+      function allFilledToThree() {
+        for (const k of counts.keys()) {
+          if (counts.get(k) !== 3) return false;
+        }
+        return true;
+      }
+      function showWinOverlay() { overlay.classList.add('visible'); }
+      function hideWinOverlay() { overlay.classList.remove('visible'); }
+
+      function reset() {
+        for (const k of counts.keys()) counts.set(k, 0);
+        for (const k of owners.keys()) owners.set(k, null);
+        currentPlayer = 'P';
+        inputLocked = false;
+        hideWinOverlay();
+        draw();
+        updateScoreUI();
+      }
+
+      function addPoint(q, r, depthLeft, parentKey, fromSplit) {
+        const k = keyOf(q, r);
+        const cur = counts.get(k) || 0;
+
+        if (cur < 3) {
+          counts.set(k, cur + 1);
+          // при сплите перекрашиваем ячейку в цвет родителя; иначе, если пустая — назначаем владельца
+          if (fromSplit) {
+            owners.set(k, currentPlayer);
+          } else if (owners.get(k) == null) {
+            owners.set(k, currentPlayer);
+          }
+          return;
+        }
+
+        if (depthLeft <= 0) {
+          return;
+        }
+
+        // распад: текущая ячейка становится 1 и принимает цвет текущего игрока
+        counts.set(k, 1);
+        owners.set(k, currentPlayer);
+
+        // выбираем до 3 случайных соседей (кроме родительского)
+        const neighs = neighbors(q, r).filter(([nq, nr]) => keyOf(nq, nr) !== parentKey);
+        shuffleInPlace(neighs);
+        const targets = neighs.slice(0, Math.min(3, neighs.length));
+        for (const [nq, nr] of targets) {
+          addPoint(nq, nr, depthLeft - 1, k, true);
+        }
+      }
+
+      function enemyMove() {
+        // ИИ: выбирает случайную пустую или свою ячейку (не игрока) с count < 3
+        const candidates = [];
+        for (const { q, r } of cells) {
+          const k = keyOf(q, r);
+          const c = counts.get(k) || 0;
+          const o = owners.get(k);
+          if (c < 3 && (o === 'E' || o == null)) candidates.push({ q, r });
+        }
+        if (candidates.length === 0) return;
+        const idx = Math.floor(Math.random() * candidates.length);
+        const { q, r } = candidates[idx];
+        addPoint(q, r, 3, null, false);
+      }
+
+      function handleClick(evt) {
+        if (inputLocked) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = (evt.clientX - rect.left) * deviceScale;
+        const y = (evt.clientY - rect.top) * deviceScale;
+
+        let hitKey = null;
+        for (const [k, path] of paths.entries()) {
+          if (path && ctx.isPointInPath(path, x, y)) { hitKey = k; break; }
+        }
+        if (!hitKey) return;
+
+        const [qStr, rStr] = hitKey.split(',');
+        const q = parseInt(qStr, 10);
+        const r = parseInt(rStr, 10);
+
+        // Запрещаем клик по вражеской ячейке (можно ходить только по своим или пустым)
+        const cellOwner = owners.get(hitKey);
+        if (cellOwner && cellOwner !== 'P') return;
+
+        // Ход игрока (синий)
+        currentPlayer = 'P';
+        addPoint(q, r, 3, null, false);
+        draw();
+        updateScoreUI();
+        if (allFilledToThree()) { showWinOverlay(); return; }
+
+        // Ход противника (красный)
+        inputLocked = true;
+        setTimeout(() => {
+          currentPlayer = 'E';
+          enemyMove();
+          draw();
+          updateScoreUI();
+          inputLocked = false;
+          if (allFilledToThree()) showWinOverlay();
+        }, 200);
+      }
+
+      function handleMove(evt) {
+        const rect = canvas.getBoundingClientRect();
+        const x = (evt.clientX - rect.left) * deviceScale;
+        const y = (evt.clientY - rect.top) * deviceScale;
+
+        let newHover = null;
+        for (const [k, path] of paths.entries()) {
+          if (path && ctx.isPointInPath(path, x, y)) { newHover = k; break; }
+        }
+        if (newHover !== hoveredKey) {
+          hoveredKey = newHover;
+          draw();
+        }
+      }
+      function handleLeave() {
+        if (hoveredKey !== null) {
+          hoveredKey = null;
+          draw();
+        }
+      }
+
+      // init
+      function init() {
+        resizeCanvasToDisplaySize();
+        draw();
+      }
+
+      window.addEventListener('resize', () => { resizeCanvasToDisplaySize(); draw(); });
+      canvas.addEventListener('click', handleClick);
+      canvas.addEventListener('mousemove', handleMove);
+      canvas.addEventListener('mouseleave', handleLeave);
+      resetBtn.addEventListener('click', reset);
+      againBtn.addEventListener('click', reset);
+
+      init();
+    })();
+  </script>
+</body>
+
+</html>
